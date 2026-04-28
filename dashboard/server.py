@@ -17,6 +17,12 @@ import asyncio
 import json
 import os
 import sys
+
+# Force UTF-8 encoding for Windows console (fixes cp1252 errors for ✓ and ✗ characters)
+for stream in (sys.stdout, sys.stderr):
+    if stream.encoding.lower() != "utf-8" and hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8")
+
 import time
 from collections import deque
 from pathlib import Path
@@ -43,6 +49,12 @@ app = FastAPI(
 STATIC_DIR = Path(__file__).parent / "static"
 STATE_FILE = Path(os.getenv("OSSARTH_STATE_FILE", "ossarth_state.json"))
 DASHBOARD_PORT = int(os.getenv("OSSARTH_DASHBOARD_PORT", "8000"))
+
+# Ensure workspace is resolved to an absolute path for the MAS pipeline
+workspace = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
+workspace_path = str(Path(workspace).resolve())
+os.environ["OSSARTH_WORKSPACE"] = workspace_path
+Path(workspace_path).mkdir(parents=True, exist_ok=True)
 
 # History ring buffer: last 300 snapshots (5 minutes at 1/sec)
 _history: deque[dict] = deque(maxlen=300)

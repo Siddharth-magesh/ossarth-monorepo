@@ -12,6 +12,12 @@ from __future__ import annotations
 import random
 import threading
 import time
+
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 from kernel_sim.resource_state import ResourceState, get_resource_state
 
 
@@ -74,20 +80,42 @@ class SchedulerSim(threading.Thread):
         context_switches = base_switches + random.uniform(-base_switches * 0.1, base_switches * 0.1)
 
         # Distribute CPU load across cores
-        total_cpu = self._state.get("cpu_usage_percent")
-        num_cores = self._state.get("total_cpu_cores")
-        cpu_per_core = self._distribute_cpu_across_cores(total_cpu, num_cores)
+        if HAS_PSUTIL:
+            # Use real system metrics if available
+            try:
+                total_cpu = psutil.cpu_percent(interval=None)
+                cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
+                mem = psutil.virtual_memory()
+                real_ram_mb = mem.used / (1024 * 1024)
+                real_total_ram = mem.total / (1024 * 1024)
+            except Exception:
+                # Fallback to simulated on error
+                total_cpu = self._state.get("cpu_usage_percent")
+                num_cores = self._state.get("total_cpu_cores")
+                cpu_per_core = self._distribute_cpu_across_cores(total_cpu, num_cores)
+                real_ram_mb = None
+        else:
+            total_cpu = self._state.get("cpu_usage_percent")
+            num_cores = self._state.get("total_cpu_cores")
+            cpu_per_core = self._distribute_cpu_across_cores(total_cpu, num_cores)
+            real_ram_mb = None
 
         # Apply all updates atomically
         def apply_updates(state):
             state.scheduler_queue = rotated[:8]  # Show max 8 in queue
             state.context_switches_per_sec = round(context_switches, 0)
             state.cpu_per_core = cpu_per_core
-            # Add small random CPU drift for realism (idle jitter)
-            jitter = random.uniform(-1.5, 1.5)
-            state.cpu_usage_percent = max(
-                3.0, min(95.0, state.cpu_usage_percent + jitter)
-            )
+            
+            if HAS_PSUTIL and real_ram_mb is not None:
+                state.cpu_usage_percent = total_cpu
+                state.used_ram_mb = int(real_ram_mb)
+                state.total_ram_mb = int(real_total_ram)
+            else:
+                # Add small random CPU drift for realism (idle jitter)
+                jitter = random.uniform(-1.5, 1.5)
+                state.cpu_usage_percent = max(
+                    3.0, min(95.0, state.cpu_usage_percent + jitter)
+                )
 
         self._state.mutate(apply_updates)
         self._state.flush_to_file()

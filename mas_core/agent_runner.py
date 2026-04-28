@@ -26,6 +26,12 @@ from __future__ import annotations
 import json
 import os
 import sys
+
+# Force UTF-8 encoding for Windows console (fixes cp1252 errors for ✓ and ✗ characters)
+for stream in (sys.stdout, sys.stderr):
+    if stream.encoding.lower() != "utf-8" and hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8")
+
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,9 +86,11 @@ def validate_config() -> None:
         print("Set GROQ_API_KEY in your .env file or use OSSARTH_LLM_PROVIDER=ollama")
         sys.exit(1)
 
-    # Create workspace directory
+    # Create workspace directory securely
     workspace = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
-    Path(workspace).mkdir(parents=True, exist_ok=True)
+    workspace_path = str(Path(workspace).resolve())
+    os.environ["OSSARTH_WORKSPACE"] = workspace_path
+    Path(workspace_path).mkdir(parents=True, exist_ok=True)
 
 
 # ─────────────────────────────────────────────────────────
@@ -116,7 +124,16 @@ def resolve_references(args: dict, previous_results: dict) -> dict:
             try:
                 step_num = int(parts[1])
                 result = previous_results.get(step_num)
-                resolved[key] = str(result.output) if result and result.output else ""
+                out = result.output if result else ""
+                
+                # Smart extraction for search/list tools that return list of dicts
+                if isinstance(out, list) and out and isinstance(out[0], dict):
+                    if "path" in out[0]:
+                        out = out[0]["path"]
+                    elif "name" in out[0]:
+                        out = out[0]["name"]
+                
+                resolved[key] = str(out) if out else ""
             except (IndexError, ValueError):
                 resolved[key] = value
         else:
