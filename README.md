@@ -1,2 +1,2 @@
 # ossarth-monorepo
-The foundational monorepo for OSSARTH: an AI-native operating system powered by local Multi-Agent Systems (MAS) and MCP for decentralized AI sovereignty.
+OSSARTH (Open-Source System for Autonomous Reasoning and Task Handling) is a paradigm shift in computing. This monorepo contains the core infrastructure for an AI-native operating system that replaces deterministic kernels with a local, hierarchical Multi-Agent System (MAS). Utilizing lightweight edge LLMs and the Model Context Protocol (MCP), OSSARTH enables autonomous task execution, secure system management, and peer-to-peer compute sharing—realizing true Web3 AI sovereignty without cloud reliance.
