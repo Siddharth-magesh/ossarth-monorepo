@@ -1,0 +1,112 @@
+[
+  {
+    "id": 1,
+    "tier": "simple",
+    "input": "list all running processes",
+    "expected_task_type": "query_system",
+    "expected_tools": ["list_processes"],
+    "expected_tool_order": ["list_processes"],
+    "bash_equivalent": "ps aux",
+    "bash_chars_to_type": 6,
+    "estimated_bash_seconds": 0.3
+  },
+  {
+    "id": 2,
+    "tier": "simple",
+    "input": "show me what files are in the ossarth workspace",
+    "expected_task_type": "query_system",
+    "expected_tools": ["list_directory"],
+    "expected_tool_order": ["list_directory"],
+    "bash_equivalent": "ls -la ./ossarth_workspace",
+    "bash_chars_to_type": 24,
+    "estimated_bash_seconds": 0.4
+  },
+  {
+    "id": 3,
+    "tier": "medium_single",
+    "input": "create a file at ossarth_workspace/ossarth_test.txt with the content 'OSSARTH benchmark run'",
+    "expected_task_type": "file_operation",
+    "expected_tools": ["write_file"],
+    "expected_tool_order": ["write_file"],
+    "bash_equivalent": "echo 'OSSARTH benchmark run' > ossarth_workspace/ossarth_test.txt",
+    "bash_chars_to_type": 52,
+    "estimated_bash_seconds": 1.2
+  },
+  {
+    "id": 4,
+    "tier": "medium_single",
+    "input": "read the file at ossarth_workspace/ossarth_test.txt and show me its contents",
+    "expected_task_type": "file_operation",
+    "expected_tools": ["read_file"],
+    "expected_tool_order": ["read_file"],
+    "bash_equivalent": "cat ossarth_workspace/ossarth_test.txt",
+    "bash_chars_to_type": 36,
+    "estimated_bash_seconds": 0.5
+  },
+  {
+    "id": 5,
+    "tier": "medium_single",
+    "input": "what is the hostname of this machine",
+    "expected_task_type": "query_system",
+    "expected_tools": ["get_hostname"],
+    "expected_tool_order": ["get_hostname"],
+    "bash_equivalent": "hostname",
+    "bash_chars_to_type": 8,
+    "estimated_bash_seconds": 0.2
+  },
+  {
+    "id": 6,
+    "tier": "medium_multi",
+    "input": "write a python script that prints hello world to ossarth_workspace/hello.py and then run it",
+    "expected_task_type": "create_and_execute",
+    "expected_tools": ["write_file", "start_process"],
+    "expected_tool_order": ["write_file", "start_process"],
+    "bash_equivalent": "echo 'print(\"hello world\")' > ossarth_workspace/hello.py && python ossarth_workspace/hello.py",
+    "bash_chars_to_type": 80,
+    "estimated_bash_seconds": 3.5
+  },
+  {
+    "id": 7,
+    "tier": "medium_multi",
+    "input": "search the ossarth workspace for any text files and then read the first one you find",
+    "expected_task_type": "search_and_summarize",
+    "expected_tools": ["search_directory", "read_file"],
+    "expected_tool_order": ["search_directory", "read_file"],
+    "bash_equivalent": "find ./ossarth_workspace -name '*.txt' | head -1 | xargs cat",
+    "bash_chars_to_type": 54,
+    "estimated_bash_seconds": 1.5
+  },
+  {
+    "id": 8,
+    "tier": "medium_multi",
+    "input": "write a python script that prints the numbers 1 to 10, save it to ossarth_workspace/count.py, and run it",
+    "expected_task_type": "create_and_execute",
+    "expected_tools": ["write_file", "start_process"],
+    "expected_tool_order": ["write_file", "start_process"],
+    "bash_equivalent": "echo 'for i in range(1,11): print(i)' > ossarth_workspace/count.py && python ossarth_workspace/count.py",
+    "bash_chars_to_type": 90,
+    "estimated_bash_seconds": 3.2
+  },
+  {
+    "id": 9,
+    "tier": "complex",
+    "input": "write a python script that generates the first 20 fibonacci numbers, save it to ossarth_workspace/fib.py, run it, and then show me the file you created",
+    "expected_task_type": "create_and_execute",
+    "expected_tools": ["write_file", "start_process", "read_file"],
+    "expected_tool_order": ["write_file", "start_process", "read_file"],
+    "bash_equivalent": "[multi-command pipeline - estimated 4 steps to type manually]",
+    "bash_chars_to_type": 100,
+    "estimated_bash_seconds": 12.0
+  },
+  {
+    "id": 10,
+    "tier": "complex",
+    "input": "search the ossarth workspace for all python files, read each one, and give me a plain english summary of what each script does",
+    "expected_task_type": "search_and_summarize",
+    "expected_tools": ["search_directory", "read_file"],
+    "expected_tool_order": ["search_directory", "read_file"],
+    "bash_equivalent": "not directly possible without a separate LLM call",
+    "bash_chars_to_type": null,
+    "estimated_bash_seconds": null
+  }
+]

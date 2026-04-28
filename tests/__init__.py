@@ -1,0 +1,3 @@
+"""
+OSSARTH — tests package
+"""

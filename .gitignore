@@ -1,44 +1,47 @@
-# ==========================================
-# OSSARTH Custom Monorepo .gitignore
-# ==========================================
+# Environment
+.env
+*.env
 
-# 1. Local AI Models & Weights (CRITICAL)
-# Do not commit massive LLM files to GitHub
-*.gguf
-*.bin
-*.pt
-*.safetensors
-models/
-weights/
-
-# 2. Python / MAS Core
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-.venv/
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
 venv/
 env/
-.env
+.venv/
+.env/
 
-# 3. Systems / Rust / C++ (If used for MCP/OS integration)
-target/
-*.o
-*.so
-*.out
-build/
-
-# 4. OS Customization & VM Images
-*.iso
-*.img
-*.vdi
-*.qcow2
-
-# 5. Logs & Benchmarks
-*.log
-benchmarks/results/*.csv
-
-# 6. IDEs & OS Junk
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
+
+# Benchmark results (generated — do not commit stale results)
+benchmarks/results/*.json
+benchmarks/results/summary.md
+
+# Runtime files
+ossarth_workspace/
+ossarth_state.json
+logs/
+*.log
+
+# History
+.ossarth_history
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage

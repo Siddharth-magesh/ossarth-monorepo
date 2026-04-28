@@ -1,0 +1,12 @@
+# LLM providers — no paid APIs, local + free tier only
+ollama>=0.2.0
+groq>=0.9.0
+
+# Web dashboard backend
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Core utilities
+python-dotenv>=1.0.0
+pydantic>=2.7.0
+psutil>=5.9.0

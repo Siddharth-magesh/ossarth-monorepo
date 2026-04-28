@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OSSARTH — System Monitor</title>
+  <meta name="description" content="Real-time AI OS daemon dashboard — CPU, RAM, GPU, processes, scheduler, and command log." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- ═══════════════════════════════════════════════ HEADER ═══ -->
+  <header class="header">
+    <div class="header-brand">
+      <span class="brand-name">OSSARTH</span>
+      <span class="brand-tag">Intelligence as the Operating System</span>
+    </div>
+    <div class="header-meta">
+      <div class="meta-item">
+        <span class="meta-label">UPTIME</span>
+        <span class="meta-value" id="uptime">00:00:00</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">COMMANDS</span>
+        <span class="meta-value" id="cmd-count">0</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">LLM LATENCY</span>
+        <span class="meta-value" id="latency">—</span>
+      </div>
+      <div class="status-dot" id="status-dot" title="SSE connection status"></div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════ GAUGE ROW ═══ -->
+  <section class="gauge-row">
+
+    <!-- CPU Donut -->
+    <div class="card gauge-card" id="cpu-card">
+      <div class="card-label">CPU USAGE</div>
+      <div class="donut-wrap">
+        <canvas id="cpu-donut" width="140" height="140"></canvas>
+        <div class="donut-center">
+          <span class="donut-value" id="cpu-value">0</span>
+          <span class="donut-unit">%</span>
+        </div>
+      </div>
+      <div class="sparkline-wrap">
+        <canvas id="cpu-sparkline" height="32"></canvas>
+      </div>
+    </div>
+
+    <!-- RAM Bar -->
+    <div class="card gauge-card" id="ram-card">
+      <div class="card-label">RAM</div>
+      <div class="bar-label-row">
+        <span id="ram-used">0</span>
+        <span class="bar-sep">/</span>
+        <span id="ram-total">8192</span>
+        <span class="bar-unit">MB</span>
+        <span class="bar-pct" id="ram-pct">0%</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill ram-fill" id="ram-bar" style="width:0%"></div>
+      </div>
+      <div class="sparkline-wrap">
+        <canvas id="ram-sparkline" height="32"></canvas>
+      </div>
+    </div>
+
+    <!-- GPU VRAM Bar -->
+    <div class="card gauge-card" id="gpu-card">
+      <div class="card-label">GPU VRAM</div>
+      <div class="bar-label-row">
+        <span id="gpu-used">0</span>
+        <span class="bar-sep">/</span>
+        <span id="gpu-total">4096</span>
+        <span class="bar-unit">MB</span>
+        <span class="bar-pct" id="gpu-pct">0%</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill gpu-fill" id="gpu-bar" style="width:0%"></div>
+      </div>
+      <div class="sparkline-wrap">
+        <canvas id="gpu-sparkline" height="32"></canvas>
+      </div>
+    </div>
+
+    <!-- Threads Counter -->
+    <div class="card gauge-card" id="threads-card">
+      <div class="card-label">ACTIVE THREADS</div>
+      <div class="big-counter-wrap">
+        <span class="big-counter" id="thread-count">0</span>
+        <span class="counter-delta" id="thread-delta"></span>
+      </div>
+      <div class="sub-label">Context switches/sec</div>
+      <div class="big-counter thread-cs" id="ctx-switches">0</div>
+      <div class="sparkline-wrap">
+        <canvas id="thread-sparkline" height="32"></canvas>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ═══════════════════════════════════════ CORE GRID ═══ -->
+  <section class="cores-section card">
+    <div class="card-label">CPU PER CORE</div>
+    <div class="core-grid" id="core-grid">
+      <!-- filled by JS -->
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ MIDDLE ROW ═══ -->
+  <section class="middle-row">
+
+    <!-- Process Table -->
+    <div class="card process-card">
+      <div class="card-label">PROCESS TABLE
+        <span class="table-count" id="proc-count">0 processes</span>
+      </div>
+      <div class="table-scroll">
+        <table class="proc-table" id="proc-table">
+          <thead>
+            <tr>
+              <th>PID</th>
+              <th>NAME</th>
+              <th>CMD</th>
+              <th>CPU%</th>
+              <th>MEM MB</th>
+              <th>STATUS</th>
+              <th>STARTED</th>
+            </tr>
+          </thead>
+          <tbody id="proc-tbody">
+            <tr class="empty-row"><td colspan="7">No processes running</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Scheduler Queue -->
+    <div class="card scheduler-card">
+      <div class="card-label">SCHEDULER QUEUE</div>
+      <div class="sched-algo" id="sched-algo">round_robin</div>
+      <div class="sched-list" id="sched-list">
+        <div class="sched-item placeholder">Awaiting processes...</div>
+      </div>
+      <div class="sched-footer">
+        <span class="sched-footer-label">ctx switches/sec</span>
+        <span class="sched-footer-val" id="sched-cs">0</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ════════════════════════════════════ COMMAND INPUT ═══ -->
+  <section class="command-section card">
+    <div class="card-label">COMMAND INPUT</div>
+    <div class="command-row">
+      <span class="cmd-prompt">OSSARTH &gt;</span>
+      <input
+        type="text"
+        id="cmd-input"
+        class="cmd-input"
+        placeholder="Type a natural language command..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="cmd-btn" id="cmd-btn" onclick="sendCommand()">RUN</button>
+    </div>
+    <div class="cmd-status" id="cmd-status"></div>
+  </section>
+
+  <!-- ════════════════════════════════════ COMMAND LOG ═════ -->
+  <section class="log-section card">
+    <div class="card-label">COMMAND LOG</div>
+    <div class="log-list" id="log-list">
+      <div class="log-placeholder">Commands will appear here as they are processed...</div>
+    </div>
+  </section>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
