@@ -23,8 +23,9 @@ from mas_core import llm_client
 from mas_core.prompts import ERROR_CORRECTION_PROMPT, INTENT_SYSTEM_PROMPT
 from mas_core.schemas import IntentSchema
 
-# Max tokens for intent responses (small JSON objects — 256 is generous)
-INTENT_MAX_TOKENS = 256
+# Max tokens for intent responses
+# 256 was too low — a full IntentSchema JSON with entities can be 300-400 chars.
+INTENT_MAX_TOKENS = 512
 
 
 # ─────────────────────────────────────────────────────────
@@ -135,10 +136,10 @@ class IntentAgent:
             return self._parse_response(response_text, raw_input)
 
         except Exception as retry_err:
-            if self.verbose:
-                print(f"  [IntentAgent] Retry also failed: {retry_err}")
+            print(f"  [IntentAgent] Retry also failed with exception: {repr(retry_err)}")
 
-        # Final fallback
+        # Final fallback — always print what the LLM returned so we can diagnose
+        print(f"  [IntentAgent] Both attempts failed. Last response: {response_text!r}")
         return IntentSchema(
             task_type="unknown",
             requires_clarification=True,

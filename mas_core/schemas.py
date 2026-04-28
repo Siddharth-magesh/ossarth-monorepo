@@ -22,7 +22,7 @@ class EntityItem(BaseModel):
     """A single entity extracted from the user's natural language input."""
     type: Literal[
         "file", "directory", "command", "language",
-        "query", "process", "port", "action", "unknown"
+        "query", "process", "port", "action", "content", "unknown"
     ]
     value: str
 

@@ -15,6 +15,34 @@ from pathlib import Path
 from typing import Optional
 from mcp_tools.tool_base import mcp_tool
 
+# ── Workspace resolution ──
+# Resolve OSSARTH_WORKSPACE relative to the repo root so it is always correct
+# regardless of which directory the process was started from.
+_REPO_ROOT = Path(__file__).parent.parent.resolve()
+
+def _get_workspace() -> Path:
+    """Return the absolute workspace path, always anchored to the repo root."""
+    raw = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
+    if Path(raw).is_absolute():
+        return Path(raw).resolve()
+    return (_REPO_ROOT / raw).resolve()
+
+def _resolve_path(path: str) -> Path:
+    """
+    If path is relative (no drive letter, doesn't start with /),
+    resolve it relative to OSSARTH_WORKSPACE so LLM-generated paths
+    like 'ossarth_workspace/hello.txt' or 'hello.txt' land in the right place.
+    """
+    p = Path(path)
+    if p.is_absolute():
+        return p
+    ws = _get_workspace()
+    # Strip leading 'ossarth_workspace/' if the model included it
+    parts = p.parts
+    if parts and parts[0].lower() == "ossarth_workspace":
+        p = Path(*parts[1:])
+    return (ws / p).resolve()
+
 # ── Security: blocked path prefixes ──
 _BLOCKED_WRITE_PREFIXES = [
     "/etc", "/sys", "/proc", "/boot", "/bin", "/sbin", "/usr/bin",
@@ -39,42 +67,42 @@ def _check_write_path(path: str) -> None:
 @mcp_tool()
 def read_file(path: str) -> str:
     """Read and return the full text content of a file."""
-    p = Path(path)
+    p = _resolve_path(path)
     if not p.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+        raise FileNotFoundError(f"File not found: {p}")
     if not p.is_file():
-        raise ValueError(f"Path is not a file: {path}")
+        raise ValueError(f"Path is not a file: {p}")
     return p.read_text(encoding="utf-8", errors="replace")
 
 
 @mcp_tool()
 def write_file(path: str, content: str) -> str:
     """Write content to a file, creating parent directories as needed."""
-    _check_write_path(path)
-    p = Path(path)
+    p = _resolve_path(path)
+    _check_write_path(str(p))
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
-    return str(p.resolve())
+    return str(p)
 
 
 @mcp_tool()
 def append_file(path: str, content: str) -> str:
     """Append content to a file, creating it if it does not exist."""
-    _check_write_path(path)
-    p = Path(path)
+    p = _resolve_path(path)
+    _check_write_path(str(p))
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a", encoding="utf-8") as f:
         f.write(content)
-    return str(p.resolve())
+    return str(p)
 
 
 @mcp_tool()
 def delete_file(path: str) -> bool:
     """Delete a file at the given path."""
-    _check_write_path(path)
-    p = Path(path)
+    p = _resolve_path(path)
+    _check_write_path(str(p))
     if not p.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+        raise FileNotFoundError(f"File not found: {p}")
     p.unlink()
     return True
 
@@ -87,9 +115,9 @@ def search_directory(
     Recursively search a directory for files matching name or content query.
     Returns up to 50 matches.
     """
-    base = Path(path)
+    base = _resolve_path(path)
     if not base.exists():
-        raise FileNotFoundError(f"Directory not found: {path}")
+        raise FileNotFoundError(f"Directory not found: {base}")
 
     results = []
     query_lower = query.lower()
@@ -134,11 +162,11 @@ def search_directory(
 @mcp_tool()
 def list_directory(path: str) -> list:
     """List the contents of a directory (one level deep)."""
-    base = Path(path)
+    base = _resolve_path(path)
     if not base.exists():
-        raise FileNotFoundError(f"Directory not found: {path}")
+        raise FileNotFoundError(f"Directory not found: {base}")
     if not base.is_dir():
-        raise ValueError(f"Path is not a directory: {path}")
+        raise ValueError(f"Path is not a directory: {base}")
 
     entries = []
     for item in sorted(base.iterdir()):
@@ -160,12 +188,12 @@ def list_directory(path: str) -> list:
 @mcp_tool()
 def get_file_info(path: str) -> dict:
     """Return metadata for a single file."""
-    p = Path(path)
+    p = _resolve_path(path)
     if not p.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+        raise FileNotFoundError(f"File not found: {p}")
     s = p.stat()
     return {
-        "path": str(p.resolve()),
+        "path": str(p),
         "size_bytes": s.st_size,
         "created": datetime.fromtimestamp(s.st_ctime, tz=timezone.utc).isoformat(),
         "modified": datetime.fromtimestamp(s.st_mtime, tz=timezone.utc).isoformat(),

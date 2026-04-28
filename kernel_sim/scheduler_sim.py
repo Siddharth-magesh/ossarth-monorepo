@@ -55,6 +55,43 @@ class SchedulerSim(threading.Thread):
         # Read current process table (under lock via state accessor)
         process_table = list(self._state.get("process_table"))
 
+        # Every 10 ticks refresh process table from psutil so dashboard stays live
+        if HAS_PSUTIL and self._tick_count % 10 == 1:
+            try:
+                procs = []
+                for proc in psutil.process_iter([
+                    "pid", "name", "cmdline", "cpu_percent",
+                    "memory_info", "status", "create_time"
+                ]):
+                    try:
+                        info = proc.info
+                        from datetime import datetime, timezone
+                        mem_mb = round(
+                            info["memory_info"].rss / (1024 * 1024), 1
+                        ) if info.get("memory_info") else 0.0
+                        procs.append({
+                            "pid":         info["pid"],
+                            "name":        info.get("name", "?"),
+                            "cmd":         " ".join(info.get("cmdline") or [])[:80],
+                            "cpu_percent": round(info.get("cpu_percent") or 0.0, 1),
+                            "memory_mb":   mem_mb,
+                            "status":      info.get("status", "unknown"),
+                            "started":     datetime.fromtimestamp(
+                                info.get("create_time") or 0, tz=timezone.utc
+                            ).isoformat(),
+                        })
+                    except Exception:
+                        continue
+                procs.sort(key=lambda p: p["cpu_percent"], reverse=True)
+                top_procs = procs[:30]
+                self._state.mutate(lambda s: setattr(s, "process_table", top_procs))
+                # Also update active_threads
+                self._state.mutate(
+                    lambda s: setattr(s, "active_threads", psutil.cpu_count(logical=True))
+                )
+            except Exception:
+                pass
+
         # Build round-robin queue from process names
         process_names = [
             p.get("name", f"pid-{p.get('pid', '?')}")

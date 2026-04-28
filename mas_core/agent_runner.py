@@ -86,9 +86,13 @@ def validate_config() -> None:
         print("Set GROQ_API_KEY in your .env file or use OSSARTH_LLM_PROVIDER=ollama")
         sys.exit(1)
 
-    # Create workspace directory securely
-    workspace = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
-    workspace_path = str(Path(workspace).resolve())
+    # Resolve workspace relative to the repo root (where agent_runner.py lives, two dirs up)
+    _repo_root = Path(__file__).parent.parent.resolve()
+    _raw_ws = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
+    if Path(_raw_ws).is_absolute():
+        workspace_path = str(Path(_raw_ws).resolve())
+    else:
+        workspace_path = str((_repo_root / _raw_ws).resolve())
     os.environ["OSSARTH_WORKSPACE"] = workspace_path
     Path(workspace_path).mkdir(parents=True, exist_ok=True)
 
@@ -147,7 +151,11 @@ def resolve_references(args: dict, previous_results: dict) -> dict:
 
 def print_step_result(step, result, verbose: bool = False) -> None:
     """Display a tool execution result in the REPL."""
-    icon = _c("✓", C.GREEN) if result.success else _c("✗", C.RED)
+    # Detect whether the terminal supports Unicode; fall back to ASCII symbols
+    _utf8 = getattr(sys.stdout, "encoding", "utf-8").lower() == "utf-8"
+    ok_str   = "\u2713" if _utf8 else "[OK]"
+    fail_str = "\u2717" if _utf8 else "[FAIL]"
+    icon = _c(ok_str, C.GREEN) if result.success else _c(fail_str, C.RED)
     tool_name = _c(result.tool, C.CYAN)
     ms = _c(f"{result.duration_ms:.0f}ms", C.DIM)
 
@@ -156,7 +164,7 @@ def print_step_result(step, result, verbose: bool = False) -> None:
     if result.success and result.output is not None:
         output_str = result.output
         if isinstance(output_str, (dict, list)):
-            output_str = json.dumps(output_str, indent=4)
+            output_str = json.dumps(output_str, indent=4, ensure_ascii=False)
         else:
             output_str = str(output_str)
         # Truncate very long outputs
@@ -174,10 +182,10 @@ def print_step_result(step, result, verbose: bool = False) -> None:
 # Main dispatch function (also called by dashboard POST /command)
 # ─────────────────────────────────────────────────────────
 
-def dispatch_execution_graph(graph, registry, verbose: bool = False) -> list:
+def dispatch_execution_graph(graph, registry, verbose: bool = False, silent: bool = False) -> list:
     """
     Execute all steps in an ExecutionGraph.
-    Returns list of ToolResult objects.
+    silent=True suppresses all print output (used by dashboard to avoid cp1252 crashes).
     """
     previous_results = {}
     results = []
@@ -194,7 +202,7 @@ def dispatch_execution_graph(graph, registry, verbose: bool = False) -> list:
                 duration_ms=0.0,
             )
             results.append(err_result)
-            if verbose:
+            if not silent:
                 print_step_result(step, err_result, verbose)
             continue
 
@@ -206,7 +214,8 @@ def dispatch_execution_graph(graph, registry, verbose: bool = False) -> list:
         previous_results[step.step] = tool_result
         results.append(tool_result)
 
-        if verbose or True:  # Always show step results in REPL
+        # Only print in REPL, never when called from dashboard
+        if not silent:
             print_step_result(step, tool_result, verbose)
 
     return results
@@ -379,6 +388,14 @@ def main() -> None:
     registry = ToolRegistry()
     registry.initialize()
 
+    # 5a. Seed process table immediately with real OS processes
+    try:
+        from mcp_tools.process_mcp import list_processes
+        list_processes()   # this calls psutil and writes into resource_state
+        resource_state.flush_to_file()
+    except Exception:
+        pass
+
     # 6. Init context manager
     from mas_core.context_manager import ContextManager
     context_manager = ContextManager()
@@ -397,15 +414,18 @@ def main() -> None:
     # 9. Check LLM providers
     from mas_core import llm_client
     provider_status = llm_client.check_providers()
+    _utf8 = getattr(sys.stdout, "encoding", "utf-8").lower() == "utf-8"
+    _ok  = "\u2713" if _utf8 else "[OK]"
+    _no  = "o" if not _utf8 else "\u25cb"
     if provider_status["ollama"]["available"]:
-        print(_c(f"  ✓ Ollama ready ({provider_status['ollama']['model']})", C.GREEN))
+        print(_c(f"  {_ok} Ollama ready ({provider_status['ollama']['model']})", C.GREEN))
     else:
-        print(_c("  ○ Ollama not available — using Groq fallback", C.YELLOW))
+        print(_c(f"  {_no} Ollama not available -- using Groq fallback", C.YELLOW))
 
     if provider_status["groq"]["key_set"]:
-        print(_c(f"  ✓ Groq ready ({provider_status['groq']['model']})", C.GREEN))
+        print(_c(f"  {_ok} Groq ready ({provider_status['groq']['model']})", C.GREEN))
     else:
-        print(_c("  ○ Groq key not set", C.DIM))
+        print(_c(f"  {_no} Groq key not set", C.DIM))
 
     dashboard_port = os.getenv("OSSARTH_DASHBOARD_PORT", "8000")
     if not no_dashboard:

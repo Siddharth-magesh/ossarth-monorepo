@@ -18,10 +18,10 @@ import json
 import os
 import sys
 
-# Force UTF-8 encoding for Windows console (fixes cp1252 errors for ✓ and ✗ characters)
-for stream in (sys.stdout, sys.stderr):
-    if stream.encoding.lower() != "utf-8" and hasattr(stream, "reconfigure"):
-        stream.reconfigure(encoding="utf-8")
+# Force UTF-8 encoding for Windows console (fixes cp1252 for any log output)
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure") and _s.encoding.lower() != "utf-8":
+        _s.reconfigure(encoding="utf-8")
 
 import time
 from collections import deque
@@ -30,7 +30,7 @@ from typing import Any, AsyncGenerator, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -50,9 +50,15 @@ STATIC_DIR = Path(__file__).parent / "static"
 STATE_FILE = Path(os.getenv("OSSARTH_STATE_FILE", "ossarth_state.json"))
 DASHBOARD_PORT = int(os.getenv("OSSARTH_DASHBOARD_PORT", "8000"))
 
-# Ensure workspace is resolved to an absolute path for the MAS pipeline
-workspace = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
-workspace_path = str(Path(workspace).resolve())
+# Determine repo root (two levels up from this file: dashboard/server.py -> ossarth-monorepo/)
+REPO_ROOT = Path(__file__).parent.parent.resolve()
+
+# Ensure workspace is always anchored to the repo root regardless of CWD
+_raw_workspace = os.getenv("OSSARTH_WORKSPACE", "./ossarth_workspace")
+if not Path(_raw_workspace).is_absolute():
+    workspace_path = str((REPO_ROOT / _raw_workspace).resolve())
+else:
+    workspace_path = str(Path(_raw_workspace).resolve())
 os.environ["OSSARTH_WORKSPACE"] = workspace_path
 Path(workspace_path).mkdir(parents=True, exist_ok=True)
 
@@ -66,8 +72,23 @@ _last_state: dict = {}
 # ─────────────────────────────────────────────────────────
 
 def _read_state() -> dict:
-    """Read the current resource state from the IPC file."""
+    """
+    Read current resource state.
+    Priority: resource_state singleton (updated by scheduler every second)
+              → IPC state file (written by REPL daemon)
+              → last known state
+              → psutil live values as a last resort
+    """
     global _last_state
+    try:
+        # Primary: read from the in-process singleton (fastest, always live)
+        from kernel_sim.resource_state import get_resource_state
+        data = get_resource_state().to_dict()
+        _last_state = data
+        return data
+    except Exception:
+        pass
+
     try:
         if STATE_FILE.exists():
             with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -76,6 +97,32 @@ def _read_state() -> dict:
             return data
     except Exception:
         pass
+
+    # Last resort — build a live snapshot from psutil if available
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        cpu = psutil.cpu_percent(interval=None)
+        cores = psutil.cpu_percent(interval=None, percpu=True)
+        fallback = {
+            "cpu_usage_percent": cpu,
+            "cpu_per_core": cores,
+            "used_ram_mb": int(mem.used / 1024 / 1024),
+            "total_ram_mb": int(mem.total / 1024 / 1024),
+            "used_gpu_vram_mb": 0,
+            "total_gpu_vram_mb": 4096,
+            "active_threads": 0,
+            "process_table": [],
+            "scheduler_queue": [],
+            "context_switches_per_sec": 0,
+            "uptime_seconds": 0,
+            "command_count": 0,
+        }
+        _last_state = fallback
+        return fallback
+    except Exception:
+        pass
+
     return _last_state or {
         "cpu_usage_percent": 0,
         "used_ram_mb": 0,
@@ -107,6 +154,13 @@ async def _history_collector():
 
 @app.on_event("startup")
 async def startup_event():
+    # Seed the process table immediately from psutil so the dashboard
+    # is never empty on first open
+    try:
+        from mcp_tools.process_mcp import list_processes
+        list_processes()
+    except Exception:
+        pass
     asyncio.create_task(_history_collector())
 
 
@@ -248,12 +302,17 @@ async def run_command(req: CommandRequest):
         intent = await loop.run_in_executor(None, intent_agent.classify, raw_input)
         graph = await loop.run_in_executor(None, orchestrator.plan, intent)
         results = await loop.run_in_executor(
-            None, dispatch_execution_graph, graph, registry, False
+            None, lambda: dispatch_execution_graph(graph, registry, verbose=False, silent=True)
         )
 
         total_ms = (time.perf_counter() - t0) * 1000
 
-        return JSONResponse({
+        def _safe_output(val) -> str:
+            """Convert output to ASCII-safe string to avoid cp1252 errors on Windows."""
+            s = json.dumps(val, ensure_ascii=True) if isinstance(val, (dict, list)) else str(val)
+            return s[:500]
+
+        payload = {
             "input": raw_input,
             "intent": intent.model_dump(),
             "graph": [s.model_dump() for s in graph.steps],
@@ -262,7 +321,7 @@ async def run_command(req: CommandRequest):
                     "step": r.step,
                     "tool": r.tool,
                     "success": r.success,
-                    "output": str(r.output)[:500] if r.output is not None else None,
+                    "output": _safe_output(r.output) if r.output is not None else None,
                     "error": r.error,
                     "duration_ms": r.duration_ms,
                 }
@@ -270,7 +329,12 @@ async def run_command(req: CommandRequest):
             ],
             "duration_ms": round(total_ms, 2),
             "all_succeeded": all(r.success for r in results),
-        })
+        }
+        # Explicitly encode as UTF-8 and set charset — avoids Windows cp1252 crash
+        return Response(
+            content=json.dumps(payload, ensure_ascii=False),
+            media_type="application/json; charset=utf-8",
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

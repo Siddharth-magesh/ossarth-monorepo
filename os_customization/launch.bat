@@ -1,14 +1,23 @@
 @echo off
-REM ─────────────────────────────────────────────────────────
-REM OSSARTH — Windows Launch Script
-REM Run from the repo root: os_customization\launch.bat
-REM ─────────────────────────────────────────────────────────
+REM OSSARTH - Windows Launch Script
+REM Run from the REPO ROOT: os_customization\launch.bat
 
 setlocal
 
-REM Check .env exists
+REM Switch terminal to UTF-8 code page
+chcp 65001 >nul 2>&1
+
+REM Tell Python to use UTF-8 for all I/O
+set PYTHONUTF8=1
+
+REM Resolve the repo root (parent of the directory this .bat lives in)
+set "SCRIPT_DIR=%~dp0"
+set "REPO_ROOT=%SCRIPT_DIR%.."
+cd /d "%REPO_ROOT%"
+
+REM Check .env exists in repo root
 if not exist ".env" (
-    echo [ERROR] .env file not found.
+    echo [ERROR] .env file not found in %REPO_ROOT%
     echo Copy .env.example to .env and fill in your GROQ_API_KEY.
     exit /b 1
 )
@@ -25,14 +34,16 @@ if exist "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
     echo [OSSARTH] Virtual environment activated.
 ) else (
-    echo [OSSARTH] No venv found — using system Python.
-    echo           Run: python -m venv venv ^& venv\Scripts\activate ^& pip install -r requirements.txt
+    echo [OSSARTH] No venv found - using system Python.
+    echo           Run: python -m venv venv
+    echo           Then: venv\Scripts\activate
+    echo           Then: pip install -r requirements.txt
 )
 
 REM Create logs directory
 if not exist "logs" mkdir logs
 
-REM Check if Ollama is running (non-blocking check)
+REM Check if Ollama is running (non-blocking)
 curl -s http://localhost:11434/api/tags >nul 2>&1
 if errorlevel 1 (
     echo [OSSARTH] WARNING: Ollama not detected on localhost:11434
@@ -45,7 +56,7 @@ if errorlevel 1 (
 
 REM Start dashboard server in background
 echo [OSSARTH] Starting dashboard server on port 8000...
-start "OSSARTH Dashboard" /B python -m uvicorn dashboard.server:app --host 0.0.0.0 --port 8000 > logs\dashboard.log 2>&1
+start "OSSARTH Dashboard" /B python -X utf8 -m uvicorn dashboard.server:app --host 0.0.0.0 --port 8000 --log-level warning > logs\dashboard.log 2>&1
 
 REM Wait for dashboard to be ready
 timeout /t 3 /nobreak >nul
@@ -57,10 +68,10 @@ echo [OSSARTH] Dashboard available at http://localhost:8000
 echo [OSSARTH] Starting OSSARTH daemon (REPL)...
 echo.
 
-REM Start the REPL in foreground (blocking)
-python -m mas_core.agent_runner %*
+REM Start the REPL in foreground
+python -X utf8 -m mas_core.agent_runner %*
 
-REM Cleanup: kill dashboard process
+REM Cleanup dashboard on exit
 echo.
 echo [OSSARTH] Shutting down dashboard...
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /PID %%p >nul 2>&1
